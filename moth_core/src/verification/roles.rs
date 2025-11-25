@@ -457,7 +457,7 @@ async fn handle_maps(
 
         for mapset in mapsets {
             for map in mapset.maps.expect("always sent") {
-                if map.creator_id == user_id || map.owners.unwrap_or_default().iter().any(|x| x.user_id == user_id) {
+                if map.creator_id == user_id || ensure_owners(&osu, &map).await.iter().any(|x| x.user_id == user_id) {
                     match map.status {
                         RankStatus::Ranked | RankStatus::Approved => match map.mode {
                             GameMode::Osu => holder.set_ranked_std(true),
@@ -485,6 +485,21 @@ async fn handle_maps(
             break;
         }
     }
+}
+
+async fn ensure_owners(osu: &rosu_v2::Osu, map: &rosu_v2::prelude::BeatmapExtended) -> Vec<rosu_v2::prelude::BeatmapOwner> {
+    if let Some(map_owners) = &map.owners {
+        return map_owners.to_vec()
+    }
+
+    // osu.user_beatmapsets() may not return owner info, requiring an additional call to osu.beatmap()
+    // if osu.beatmap() fails too, just give up
+    let beatmap_request = osu.beatmap().map_id(map.map_id).await;
+    if let Ok(beatmap) = beatmap_request {
+        return beatmap.owners.unwrap_or_default();
+    }
+
+    return vec![];
 }
 
 async fn kill_roles(ctx: &serenity::all::Context, user_id: UserId) {
